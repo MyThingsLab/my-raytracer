@@ -4,7 +4,7 @@ import math
 
 import pytest
 
-from myraytracer.geometry import Plane, Sphere
+from myraytracer.geometry import Plane, Quad, Sphere
 from myraytracer.material import Material
 from myraytracer.ray import Ray
 from myraytracer.vec import Vec3
@@ -90,3 +90,65 @@ def test_plane_miss_when_intersection_outside_t_range() -> None:
 def test_plane_rejects_near_zero_length_normal() -> None:
     with pytest.raises(ValueError):
         Plane(point=Vec3(0, 0, 0), normal=Vec3(0, 0, 0), material=MATERIAL)
+
+
+def test_quad_hit_through_interior() -> None:
+    quad = Quad(
+        corner=Vec3(-1, -1, -5), edge1=Vec3(2, 0, 0), edge2=Vec3(0, 2, 0), material=MATERIAL
+    )
+    ray = Ray(origin=Vec3(0, 0, 0), direction=Vec3(0, 0, -1))
+
+    hit = quad.hit(ray, t_min=0.001, t_max=math.inf)
+
+    assert hit is not None
+    assert hit.t == pytest.approx(5.0)
+    assert hit.point == Vec3(0, 0, -5)
+    assert hit.normal == Vec3(0, 0, 1)
+    assert hit.material is MATERIAL
+
+
+def test_quad_miss_when_hit_point_outside_parallelogram_bounds() -> None:
+    quad = Quad(
+        corner=Vec3(-1, -1, -5), edge1=Vec3(2, 0, 0), edge2=Vec3(0, 2, 0), material=MATERIAL
+    )
+    ray = Ray(origin=Vec3(3, 0, 0), direction=Vec3(0, 0, -1))
+
+    assert quad.hit(ray, t_min=0.001, t_max=math.inf) is None
+
+
+def test_quad_hit_at_parallelogram_boundary() -> None:
+    quad = Quad(
+        corner=Vec3(-1, -1, -5), edge1=Vec3(2, 0, 0), edge2=Vec3(0, 2, 0), material=MATERIAL
+    )
+    ray = Ray(origin=Vec3(1, 0, 0), direction=Vec3(0, 0, -1))
+
+    hit = quad.hit(ray, t_min=0.001, t_max=math.inf)
+
+    assert hit is not None
+    assert hit.point == Vec3(1, 0, -5)
+
+
+def test_quad_hit_outside_t_range_is_none() -> None:
+    quad = Quad(
+        corner=Vec3(-1, -1, -5), edge1=Vec3(2, 0, 0), edge2=Vec3(0, 2, 0), material=MATERIAL
+    )
+    ray = Ray(origin=Vec3(0, 0, 0), direction=Vec3(0, 0, -1))
+
+    assert quad.hit(ray, t_min=0.001, t_max=3.0) is None
+
+
+def test_quad_normal_faces_incoming_ray() -> None:
+    quad = Quad(
+        corner=Vec3(-1, -1, -5), edge1=Vec3(2, 0, 0), edge2=Vec3(0, 2, 0), material=MATERIAL
+    )
+    ray = Ray(origin=Vec3(0, 0, -10), direction=Vec3(0, 0, 1))
+
+    hit = quad.hit(ray, t_min=0.001, t_max=math.inf)
+
+    assert hit is not None
+    assert hit.normal == Vec3(0, 0, -1)
+
+
+def test_quad_rejects_parallel_edges() -> None:
+    with pytest.raises(ValueError):
+        Quad(corner=Vec3(0, 0, 0), edge1=Vec3(1, 0, 0), edge2=Vec3(2, 0, 0), material=MATERIAL)
