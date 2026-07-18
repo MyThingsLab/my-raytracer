@@ -5,8 +5,10 @@ import pathlib
 import time
 
 from myraytracer.image import write_ppm
+from myraytracer.png import write_png
 from myraytracer.render import render
 from myraytracer.sceneio import load_scene
+from myraytracer.tonemap import to_srgb, tone_map
 
 
 def _render_command(args: argparse.Namespace) -> None:
@@ -24,7 +26,13 @@ def _render_command(args: argparse.Namespace) -> None:
     )
     elapsed = time.perf_counter() - start
 
-    write_ppm(pixels, args.out)
+    if args.out.suffix.lower() == ".png":
+        mapped = tone_map(pixels, args.tonemap)
+        srgb = to_srgb(mapped)
+        write_png((srgb * 255).round().astype("uint8"), args.out)
+    else:
+        write_ppm(pixels, args.out)
+
     print(
         f"rendered {args.width}x{args.height} at {args.spp} spp in {elapsed:.2f}s -> {args.out}"
     )
@@ -41,6 +49,12 @@ def build_parser() -> argparse.ArgumentParser:
     render_parser.add_argument("--spp", type=int, default=16)
     render_parser.add_argument("--max-depth", type=int, default=4)
     render_parser.add_argument("--seed", type=int, default=0)
+    render_parser.add_argument(
+        "--tonemap",
+        choices=["none", "aces", "reinhard"],
+        default="aces",
+        help="tone map applied before gamma when writing PNG output",
+    )
     render_parser.add_argument("--out", type=pathlib.Path, default=pathlib.Path("render.ppm"))
     render_parser.set_defaults(func=_render_command)
 
