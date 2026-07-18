@@ -67,6 +67,28 @@ def trace_ray(ray: Ray, scene: Scene, rng: np.random.Generator, *, max_depth: in
         falloff = cos_theta / (distance * distance)
         radiance = radiance + _multiply(hit.material.albedo, light.intensity) * falloff
 
+    for area_light in scene.area_lights():
+        u = rng.random()
+        v = rng.random()
+        light_point = area_light.corner + area_light.edge1 * u + area_light.edge2 * v
+        light_normal = area_light.edge1.cross(area_light.edge2).normalized()
+
+        to_light = light_point - hit.point
+        distance = to_light.length()
+        light_dir = to_light * (1.0 / distance)
+        cos_theta_surface = hit.normal.dot(light_dir)
+        cos_theta_light = light_normal.dot(light_dir * -1.0)
+        if cos_theta_surface <= 0.0 or cos_theta_light <= 0.0:
+            continue
+
+        shadow_ray = Ray(origin=hit.point, direction=light_dir)
+        if scene.nearest_hit(shadow_ray, t_min=1e-4, t_max=distance - 1e-4) is not None:
+            continue
+
+        area = area_light.edge1.cross(area_light.edge2).length()
+        falloff = cos_theta_surface * cos_theta_light * area / (distance * distance)
+        radiance = radiance + _multiply(hit.material.albedo, area_light.material.emission) * falloff
+
     if max_depth <= 0:
         return radiance
 

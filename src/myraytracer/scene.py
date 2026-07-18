@@ -21,3 +21,15 @@ class Scene:
                 closest = hit
                 closest_t = hit.t
         return closest
+
+    def area_lights(self) -> list[Quad]:
+        return [
+            obj
+            for obj in self.objects
+            if isinstance(obj, Quad)
+            and (
+                obj.material.emission.x > 0.0
+                or obj.material.emission.y > 0.0
+                or obj.material.emission.z > 0.0
+            )
+        ]
