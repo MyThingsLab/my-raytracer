@@ -32,8 +32,13 @@ class Vec3:
             self.x * other.y - self.y * other.x,
         )
 
+    def length_squared(self) -> float:
+        # Ray/sphere intersection and nearest-hit comparisons only need the
+        # squared magnitude; exposing it lets hot paths skip the sqrt.
+        return self.dot(self)
+
     def length(self) -> float:
-        return math.sqrt(self.dot(self))
+        return math.sqrt(self.length_squared())
 
     def normalized(self) -> Vec3:
         # Raise on zero-length: a silent zero-vector fallback would hide

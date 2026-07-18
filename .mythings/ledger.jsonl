@@ -1,0 +1,2 @@
+{"data":{"cost_usd":0.5597999,"issue":2,"turns":31},"detail":"session failed for #2: claude exited 1 (is_error)","kind":"code","outcome":"failure","tool":"mycoder","ts":"2026-07-18T19:43:45Z"}
+{"data":{"cost_usd":0.5093465000000001,"files_touched":["src/myraytracer/ray.py","src/myraytracer/vec.py","tests/test_ray.py","tests/test_vec.py"],"issue":2,"pr":10,"pr_url":"https://github.com/MyThingsLab/my-raytracer/pull/10","tests_passed":null,"turns":27},"detail":"opened draft PR #10 for #2","kind":"code","outcome":"success","tool":"mycoder","ts":"2026-07-18T19:48:23Z"}
