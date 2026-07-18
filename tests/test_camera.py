@@ -47,3 +47,18 @@ def test_degenerate_single_pixel_image_does_not_crash() -> None:
     )
     ray = camera.ray_for_pixel(px=0, py=0, width=1, height=1)
     assert ray.direction.length() == pytest.approx(1.0)
+
+
+def test_up_parallel_to_view_direction_is_rejected() -> None:
+    # With `up` parallel to the view direction the basis is degenerate (no
+    # well-defined "right" axis); normalizing the zero cross product surfaces
+    # the bad camera rather than silently emitting a garbage ray.
+    camera = Camera(
+        origin=Vec3(0, 0, 0),
+        look_at=Vec3(0, 0, -1),
+        up=Vec3(0, 0, -1),
+        vfov_degrees=90,
+        aspect_ratio=1,
+    )
+    with pytest.raises(ValueError):
+        camera.ray_for_pixel(px=0.5, py=0.5, width=1, height=1)
