@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import torch
 
@@ -21,6 +21,10 @@ class PointLight:
 class Scene:
     objects: list[Sphere | Plane]
     lights: list[PointLight]
+    # Uniform Lambertian albedo shared by every object in the scene -- v1
+    # has no per-object material system yet, so this is the single
+    # differentiable surface parameter `render` shades against.
+    albedo: torch.Tensor = field(default_factory=lambda: torch.tensor([1.0, 1.0, 1.0]))
 
     def nearest_hit(
         self,
