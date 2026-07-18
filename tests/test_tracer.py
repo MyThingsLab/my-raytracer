@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from myraytracer.camera import Camera
-from myraytracer.geometry import Plane, Sphere
+from myraytracer.geometry import Plane, Quad, Sphere
 from myraytracer.light import PointLight
 from myraytracer.material import Material
 from myraytracer.ray import Ray
@@ -150,3 +150,89 @@ def test_sphere_geometry_still_hit_correctly_within_scene() -> None:
 
     assert result == material.emission
     assert not math.isinf(result.x)
+
+
+def test_area_light_nee_matches_closed_form_solid_angle() -> None:
+    # Ray offset in x so the primary ray hits the plane but does not pass
+    # through the small light quad centered on the z-axis at z=-2.
+    albedo = Vec3(0.8, 0.5, 0.2)
+    material = Material(albedo=albedo)
+    plane = Plane(point=Vec3(0, 0, -5), normal=Vec3(0, 0, 1), material=material)
+
+    light_corner = Vec3(-0.05, -0.05, -2)
+    light_edge1 = Vec3(0.1, 0, 0)
+    light_edge2 = Vec3(0, -0.1, 0)
+    light_emission = Vec3(10, 10, 10)
+    light_material = Material(albedo=Vec3(0, 0, 0), emission=light_emission)
+    light_quad = Quad(
+        corner=light_corner, edge1=light_edge1, edge2=light_edge2, material=light_material
+    )
+    light_center = light_corner + light_edge1 * 0.5 + light_edge2 * 0.5
+
+    scene = Scene(objects=[plane, light_quad], lights=[])
+    ray = Ray(origin=Vec3(0.3, 0, 0), direction=Vec3(0, 0, -1))
+    rng = np.random.Generator(np.random.PCG64(0))
+
+    samples = 4000
+    accumulator = Vec3(0, 0, 0)
+    for _ in range(samples):
+        accumulator = accumulator + trace_ray(ray, scene, rng, max_depth=0)
+    result = accumulator * (1.0 / samples)
+
+    hit_point = Vec3(0.3, 0, -5)
+    to_light = light_center - hit_point
+    distance = to_light.length()
+    light_dir = to_light * (1.0 / distance)
+    cos_theta_surface = Vec3(0, 0, 1).dot(light_dir)
+    light_normal = light_edge1.cross(light_edge2).normalized()
+    cos_theta_light = light_normal.dot(light_dir * -1.0)
+    area = light_edge1.cross(light_edge2).length()
+    expected = albedo * (
+        light_emission.x * cos_theta_surface * cos_theta_light * area / distance**2
+    )
+
+    assert result.x == pytest.approx(expected.x, rel=0.1, abs=1e-4)
+    assert result.y == pytest.approx(expected.y, rel=0.1, abs=1e-4)
+    assert result.z == pytest.approx(expected.z, rel=0.1, abs=1e-4)
+
+
+def test_occluded_area_light_zeroes_nee_contribution() -> None:
+    material = Material(albedo=Vec3(1, 1, 1))
+    plane = Plane(point=Vec3(0, 0, -5), normal=Vec3(0, 0, 1), material=material)
+
+    light_material = Material(albedo=Vec3(0, 0, 0), emission=Vec3(10, 10, 10))
+    light_quad = Quad(
+        corner=Vec3(0.45, -0.05, -2),
+        edge1=Vec3(0.1, 0, 0),
+        edge2=Vec3(0, -0.1, 0),
+        material=light_material,
+    )
+    blocker = Sphere(center=Vec3(0.3, 0, -3.2), radius=0.25, material=material)
+
+    scene = Scene(objects=[plane, light_quad, blocker], lights=[])
+    ray = Ray(origin=Vec3(0, 0, 0), direction=Vec3(0, 0, -1))
+    rng = np.random.Generator(np.random.PCG64(0))
+
+    result = trace_ray(ray, scene, rng, max_depth=0)
+
+    assert result == Vec3(0, 0, 0)
+
+
+def test_scene_with_no_area_lights_behaves_as_before() -> None:
+    albedo = Vec3(0.8, 0.5, 0.2)
+    material = Material(albedo=albedo)
+    plane = Plane(point=Vec3(0, 0, -5), normal=Vec3(0, 0, 1), material=material)
+    light = PointLight(position=Vec3(0, 0, -2), intensity=Vec3(10, 10, 10))
+    scene = Scene(objects=[plane], lights=[light])
+    ray = Ray(origin=Vec3(0, 0, 0), direction=Vec3(0, 0, -1))
+    rng = np.random.Generator(np.random.PCG64(0))
+
+    result = trace_ray(ray, scene, rng, max_depth=0)
+
+    distance = 3.0
+    cos_theta = 1.0
+    expected = albedo * (10.0 * cos_theta / distance**2)
+
+    assert result.x == pytest.approx(expected.x)
+    assert result.y == pytest.approx(expected.y)
+    assert result.z == pytest.approx(expected.z)
