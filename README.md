@@ -17,14 +17,36 @@ software from an issue backlog," originally proposed as "my-renderer"
 - Cosine-weighted hemisphere Monte Carlo integration, Russian-roulette
   bounce termination, point/area lights.
 - `numpy` for vector math; PPM output (stdlib, no PNG).
-- Out of scope: triangle meshes, textures, refraction, GPU acceleration,
-  denoising.
+- Out of scope: triangle meshes, textures, refraction, denoising.
+
+## Scope (v1 — `myraytracer.gpu`)
+
+A second, parallel implementation of the same physics in PyTorch
+(`src/myraytracer/gpu/`), batched over rays/pixels and differentiable —
+GPU-accelerated when CUDA is available, CPU fallback otherwise (CI has no
+GPU, so it only ever exercises the CPU path). The v0 `numpy` module is
+untouched; nothing in v0 imports from `gpu/` or vice versa.
+
+- Batched, autograd-safe vector/ray/geometry ops; a `Scene` gradient can flow
+  from a rendered pixel back to material albedo, light intensity, and
+  geometry parameters for the *smooth* (non-occluded) terms.
+- Occlusion/visibility is a hard boolean mask in v1 — gradients do **not**
+  flow through shadow boundaries (a detached mask, not the harder
+  reparameterized/edge-sampling visibility gradient from the differentiable-
+  rendering literature). Documented as a known limitation, not a bug.
+- v1 direct lighting only (no recursive Monte Carlo path tracing yet) — a
+  full differentiable multi-bounce integrator is future work.
+- Proven with an actual inverse-rendering test: gradient descent recovers a
+  known albedo from a target rendered image.
+- Out of scope (for now): differentiable visibility/soft shadows, multi-bounce
+  GI, triangle meshes.
 
 ## Install (development)
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
+pip install -e ".[dev]"       # v0 (numpy) only
+pip install -e ".[dev,gpu]"   # + v1 (myraytracer.gpu, torch)
 pytest
 ```
 

@@ -24,8 +24,12 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+      # CPU-only wheel: the default PyPI torch build bundles CUDA and is
+      # much larger/slower to fetch, and Actions runners have no GPU anyway.
+      - name: Install torch (CPU)
+        run: pip install torch --index-url https://download.pytorch.org/whl/cpu
       - name: Install
-        run: pip install -e ".[dev]"
+        run: pip install -e ".[dev,gpu]"
       - name: Ruff
         run: ruff check src tests
       - name: Tests
