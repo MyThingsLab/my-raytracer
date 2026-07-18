@@ -5,7 +5,7 @@ import pathlib
 from typing import Any
 
 from myraytracer.camera import Camera
-from myraytracer.geometry import Plane, Sphere
+from myraytracer.geometry import Plane, Quad, Sphere
 from myraytracer.light import PointLight
 from myraytracer.material import Material
 from myraytracer.scene import Scene
@@ -26,7 +26,9 @@ from myraytracer.vec import Vec3
 #     {"type": "sphere", "center": [x, y, z], "radius": 1,
 #      "material": {"albedo": [r, g, b], "emission": [r, g, b]}},
 #     {"type": "plane", "point": [x, y, z], "normal": [x, y, z],
-#      "material": {"albedo": [r, g, b]}}
+#      "material": {"albedo": [r, g, b]}},
+#     {"type": "quad", "corner": [x, y, z], "edge1": [x, y, z], "edge2": [x, y, z],
+#      "material": {"albedo": [r, g, b], "emission": [r, g, b]}}
 #   ],
 #   "lights": [
 #     {"position": [x, y, z], "intensity": [r, g, b]}
@@ -34,7 +36,8 @@ from myraytracer.vec import Vec3
 # }
 #
 # `material.emission` is optional and defaults to (0, 0, 0), matching
-# Material's own default.
+# Material's own default. A `Quad` with non-zero emission acts as an area
+# light via `Scene.area_lights()`.
 
 
 def _vec3(data: Any, field_name: str) -> Vec3:
@@ -75,7 +78,7 @@ def _parse_material(data: dict[str, Any] | None, context: str) -> Material:
     return Material(albedo=albedo)
 
 
-def _parse_object(data: dict[str, Any]) -> Sphere | Plane:
+def _parse_object(data: dict[str, Any]) -> Sphere | Plane | Quad:
     object_type = data.get("type")
     if object_type == "sphere":
         try:
@@ -95,6 +98,16 @@ def _parse_object(data: dict[str, Any]) -> Sphere | Plane:
             )
         except (TypeError, ValueError) as exc:
             raise ValueError(f"invalid plane: {exc}") from exc
+    if object_type == "quad":
+        try:
+            return Quad(
+                corner=_vec3(_require(data, "corner", "quad"), "quad.corner"),
+                edge1=_vec3(_require(data, "edge1", "quad"), "quad.edge1"),
+                edge2=_vec3(_require(data, "edge2", "quad"), "quad.edge2"),
+                material=_parse_material(data.get("material"), "quad"),
+            )
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"invalid quad: {exc}") from exc
     raise ValueError(f"unknown object type: {object_type!r}")
 
 

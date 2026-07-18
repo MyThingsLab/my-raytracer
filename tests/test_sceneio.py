@@ -6,7 +6,7 @@ import pathlib
 import pytest
 
 from myraytracer.camera import Camera
-from myraytracer.geometry import Plane, Sphere
+from myraytracer.geometry import Plane, Quad, Sphere
 from myraytracer.light import PointLight
 from myraytracer.sceneio import load_scene
 from myraytracer.vec import Vec3
@@ -97,6 +97,47 @@ def test_load_scene_rejects_negative_light_intensity(tmp_path: pathlib.Path) -> 
         load_scene(path)
 
 
+def test_load_scene_parses_quad_object(tmp_path: pathlib.Path) -> None:
+    data = _basic_scene_dict()
+    data["objects"].append(
+        {
+            "type": "quad",
+            "corner": [-1, -1, -5],
+            "edge1": [2, 0, 0],
+            "edge2": [0, 2, 0],
+            "material": {"albedo": [0.1, 0.1, 0.1], "emission": [5, 5, 5]},
+        }
+    )
+    path = _write_scene(tmp_path, data)
+
+    scene, _ = load_scene(path)
+
+    assert len(scene.objects) == 3
+    quad = scene.objects[2]
+    assert isinstance(quad, Quad)
+    assert quad.corner == Vec3(-1, -1, -5)
+    assert quad.edge1 == Vec3(2, 0, 0)
+    assert quad.edge2 == Vec3(0, 2, 0)
+    assert quad.material.emission == Vec3(5, 5, 5)
+
+
+def test_load_scene_rejects_degenerate_quad_edges(tmp_path: pathlib.Path) -> None:
+    data = _basic_scene_dict()
+    data["objects"].append(
+        {
+            "type": "quad",
+            "corner": [0, 0, 0],
+            "edge1": [1, 0, 0],
+            "edge2": [2, 0, 0],
+            "material": {"albedo": [0.1, 0.1, 0.1]},
+        }
+    )
+    path = _write_scene(tmp_path, data)
+
+    with pytest.raises(ValueError, match="edge1/edge2"):
+        load_scene(path)
+
+
 def test_load_scene_rejects_missing_required_camera_field(tmp_path: pathlib.Path) -> None:
     data = _basic_scene_dict()
     del data["camera"]["vfov_degrees"]
@@ -104,3 +145,13 @@ def test_load_scene_rejects_missing_required_camera_field(tmp_path: pathlib.Path
 
     with pytest.raises(ValueError, match="vfov_degrees"):
         load_scene(path)
+
+
+def test_cornell_box_example_loads_without_error() -> None:
+    path = pathlib.Path(__file__).parent.parent / "examples" / "cornell_box.json"
+
+    scene, camera = load_scene(path)
+
+    assert isinstance(camera, Camera)
+    assert len(scene.objects) == 7
+    assert len(scene.area_lights()) == 1

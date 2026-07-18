@@ -41,6 +41,26 @@ untouched; nothing in v0 imports from `gpu/` or vice versa.
 - Out of scope (for now): differentiable visibility/soft shadows, multi-bounce
   GI, triangle meshes.
 
+## Example: Cornell box
+
+`examples/cornell_box.json` is the canonical Cornell box scene: five
+axis-aligned `Quad` walls (red left, green right, white floor/ceiling/back —
+the camera-side wall is omitted so the camera can see in), a small emissive
+`Quad` recessed into the ceiling as an area light, and a white `Sphere` inside
+as a shadow-casting occluder. Concrete bounds and the exact wall/light
+placement are documented in the scene file's own `"_comment"` field (JSON has
+no native comments, and `load_scene` tolerates unknown top-level keys).
+
+```bash
+myraytracer render --scene examples/cornell_box.json \
+  --width 128 --height 128 --spp 64 --max-depth 4 --seed 0 \
+  --out cornell_box.ppm
+```
+
+This finishes in a single session and produces a `.ppm` image with the
+Cornell box's recognizable shape and color-bled walls. It is not meant to be
+photorealistic or fully converged at this sample count.
+
 ## Install (development)
 
 ```bash
