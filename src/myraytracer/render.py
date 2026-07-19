@@ -5,7 +5,6 @@ import math
 import numpy as np
 
 from myraytracer.camera import Camera
-from myraytracer.core import NUMPY, render_image
 from myraytracer.core import Camera as CoreCamera
 from myraytracer.core import Material as CoreMaterial
 from myraytracer.core import Plane as CorePlane
@@ -13,6 +12,7 @@ from myraytracer.core import PointLight as CorePointLight
 from myraytracer.core import Quad as CoreQuad
 from myraytracer.core import Scene as CoreScene
 from myraytracer.core import Sphere as CoreSphere
+from myraytracer.core import get_backend, render_image
 from myraytracer.geometry import Plane, Quad, Sphere
 from myraytracer.scene import Scene
 from myraytracer.vec import Vec3
@@ -81,6 +81,7 @@ def render(
     spp: int,
     max_depth: int,
     seed: int,
+    backend: str = "cpu",
 ) -> np.ndarray:
     image = render_image(
         _core_scene(scene),
@@ -90,8 +91,10 @@ def render(
         spp=spp,
         max_depth=max_depth,
         seed=seed,
-        backend=NUMPY,
+        backend=get_backend(backend),
     )
+    if hasattr(image, "detach"):  # a torch tensor -> bring it back to numpy
+        image = image.detach().cpu().numpy()
     return np.asarray(image, dtype=np.float64)
 
 

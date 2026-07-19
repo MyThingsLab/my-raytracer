@@ -23,6 +23,7 @@ def _render_command(args: argparse.Namespace) -> None:
         spp=args.spp,
         max_depth=args.max_depth,
         seed=args.seed,
+        backend=args.backend,
     )
     elapsed = time.perf_counter() - start
 
@@ -49,6 +50,12 @@ def build_parser() -> argparse.ArgumentParser:
     render_parser.add_argument("--spp", type=int, default=16)
     render_parser.add_argument("--max-depth", type=int, default=4)
     render_parser.add_argument("--seed", type=int, default=0)
+    render_parser.add_argument(
+        "--backend",
+        choices=["cpu", "gpu"],
+        default="cpu",
+        help="array backend for the integrator: cpu (numpy) or gpu (torch, CUDA if available)",
+    )
     render_parser.add_argument(
         "--tonemap",
         choices=["none", "aces", "reinhard"],
