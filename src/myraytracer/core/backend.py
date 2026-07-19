@@ -58,6 +58,24 @@ class Backend:
     def broadcast_to(self, x: Array, shape: tuple[int, ...]) -> Array:
         return self.xp.broadcast_to(x, shape)
 
+    def where(self, cond: Array, a: Array, b: Array) -> Array:
+        return self.xp.where(cond, a, b)
+
+    def clip(self, x: Array, lo: float | None = None, hi: float | None = None) -> Array:
+        # numpy spells it clip(x, lo, hi); torch spells it clamp(x, min=, max=).
+        if self.is_torch:
+            return self.xp.clamp(x, min=lo, max=hi)
+        return self.xp.clip(x, lo, hi)
+
+    def zeros_like(self, x: Array) -> Array:
+        return self.xp.zeros_like(x)
+
+    def ones_like(self, x: Array) -> Array:
+        return self.xp.ones_like(x)
+
+    def full_like(self, x: Array, value: float) -> Array:
+        return self.xp.full_like(x, value)
+
 
 NUMPY = Backend(name="numpy", xp=np)
 

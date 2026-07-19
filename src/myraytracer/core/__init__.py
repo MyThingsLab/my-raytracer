@@ -8,18 +8,36 @@ from myraytracer.core.backend import (
     torch_backend,
 )
 from myraytracer.core.camera import Camera
+from myraytracer.core.geometry import (
+    Hit,
+    Plane,
+    Quad,
+    Sphere,
+    hit_primitive,
+)
 from myraytracer.core.linalg import cross, dot, length, normalize
+from myraytracer.core.material import Material
 from myraytracer.core.ray import RayBatch
+from myraytracer.core.scene import PointLight, Scene, SceneHit
 
 __all__ = [
     "NUMPY",
     "Backend",
     "Camera",
+    "Hit",
+    "Material",
+    "Plane",
+    "PointLight",
+    "Quad",
     "RayBatch",
+    "Scene",
+    "SceneHit",
+    "Sphere",
     "backend_of",
     "cross",
     "dot",
     "get_backend",
+    "hit_primitive",
     "length",
     "normalize",
     "torch_backend",
