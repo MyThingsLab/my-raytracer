@@ -33,6 +33,8 @@ def _core_material(material) -> CoreMaterial:
         emission=_tuple(material.emission),
         metallic=material.metallic,
         roughness=material.roughness,
+        transmission=material.transmission,
+        ior=material.ior,
     )
 
 

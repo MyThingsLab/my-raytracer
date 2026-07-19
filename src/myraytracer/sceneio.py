@@ -79,7 +79,16 @@ def _parse_material(data: dict[str, Any] | None, context: str) -> Material:
     )
     metallic = float(data.get("metallic", 0.0))
     roughness = float(data.get("roughness", 1.0))
-    return Material(albedo=albedo, emission=emission, metallic=metallic, roughness=roughness)
+    transmission = float(data.get("transmission", 0.0))
+    ior = float(data.get("ior", 1.5))
+    return Material(
+        albedo=albedo,
+        emission=emission,
+        metallic=metallic,
+        roughness=roughness,
+        transmission=transmission,
+        ior=ior,
+    )
 
 
 def _parse_object(data: dict[str, Any]) -> Sphere | Plane | Quad:

@@ -70,7 +70,14 @@ def _light_sampling_pdf(
 def _bsdf(hit: SceneHit, view: Array, direction: Array, backend: Backend):
     # BSDF value*cos and pdf for a light direction, using the hit's material.
     return bsdf_evaluate(
-        view, direction, hit.normal, hit.albedo, hit.metallic, hit.roughness, backend
+        view,
+        direction,
+        hit.normal,
+        hit.albedo,
+        hit.metallic,
+        hit.roughness,
+        hit.transmission,
+        backend,
     )
 
 
@@ -195,11 +202,22 @@ def integrate(
         # Missed rays have a zero normal; sampling would divide by zero, so give
         # them a dummy unit normal -- their throughput is already zero.
         safe_normal = backend.where(hit_mask, hit.normal, up)
+        safe_geo_normal = backend.where(hit_mask, hit.geo_normal, up)
         n = origin.shape[0]
         u1 = backend.random(generator, n)
         u2 = backend.random(generator, n)
         bounce, weight, pdf = bsdf_sample(
-            view, safe_normal, hit.albedo, hit.metallic, hit.roughness, u1, u2, backend
+            view,
+            safe_normal,
+            safe_geo_normal,
+            hit.albedo,
+            hit.metallic,
+            hit.roughness,
+            hit.transmission,
+            hit.ior,
+            u1,
+            u2,
+            backend,
         )
         # The sampling pdf of this bounce, carried forward so the next hit's
         # emission can be MIS-weighted against it.
