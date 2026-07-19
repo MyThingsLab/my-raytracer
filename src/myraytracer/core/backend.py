@@ -91,6 +91,19 @@ class Backend:
             return self.xp.rand(n, generator=generator, device=self.device, dtype=self.dtype)
         return generator.random(n)
 
+    def min_along(self, x: Array, axis: int) -> tuple[Array, Array]:
+        # Row-wise minimum and its argmin along `axis` (numpy returns them
+        # separately; torch.min(dim=...) returns both at once).
+        if self.is_torch:
+            result = self.xp.min(x, dim=axis)
+            return result.values, result.indices
+        return x.min(axis=axis), x.argmin(axis=axis)
+
+    def take_along(self, x: Array, index: Array, axis: int) -> Array:
+        if self.is_torch:
+            return self.xp.gather(x, axis, index)
+        return self.xp.take_along_axis(x, index, axis)
+
 
 NUMPY = Backend(name="numpy", xp=np)
 
