@@ -32,7 +32,7 @@ class Scene:
         ray_origin: Array,
         ray_dir: Array,
         t_min: float,
-        t_max: float,
+        t_max: float | Array,
         backend: Backend,
     ) -> SceneHit:
         # Running nearest-hit over primitives, carrying material alongside the
@@ -40,8 +40,11 @@ class Scene:
         # `where`, so gradients (on torch) flow only through the winning
         # primitive -- the same masked-min idiom as gpu.scene, extended to
         # per-object materials.
+        # `t_max` may be a scalar (opaque bound) or a per-ray array (shadow
+        # rays bounded by the distance to each light), so build acc_t by
+        # broadcast-add rather than full_like.
         column = ray_origin[..., 0]
-        acc_t = backend.full_like(column, t_max)
+        acc_t = backend.zeros_like(column) + t_max
         acc_point = backend.zeros_like(ray_origin)
         acc_normal = backend.zeros_like(ray_origin)
         acc_albedo = backend.zeros_like(ray_origin)

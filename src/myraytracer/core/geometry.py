@@ -85,7 +85,9 @@ def plane_hit(
     plane: Plane, ray_origin: Array, ray_dir: Array, t_min: float, t_max: float, backend: Backend
 ) -> Hit:
     point0 = backend.asarray(plane.point)
-    normal0 = backend.asarray(plane.normal)
+    # Normalize so the shaded normal is unit even when the scene supplies a
+    # non-unit plane normal (t is scale-invariant, but shading needs a unit).
+    normal0 = normalize(backend.asarray(plane.normal))
 
     denom = dot(normal0, ray_dir)
     denom_safe = backend.where(abs(denom) < _PARALLEL_EPS, backend.ones_like(denom), denom)

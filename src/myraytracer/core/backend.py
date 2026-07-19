@@ -76,6 +76,21 @@ class Backend:
     def full_like(self, x: Array, value: float) -> Array:
         return self.xp.full_like(x, value)
 
+    def rng(self, seed: int) -> Any:
+        # An explicit generator object so a render is reproducible from a seed
+        # without touching global RNG state.
+        if self.is_torch:
+            generator = self.xp.Generator(device=self.device)
+            generator.manual_seed(int(seed))
+            return generator
+        return self.xp.random.Generator(self.xp.random.PCG64(seed))
+
+    def random(self, generator: Any, n: int) -> Array:
+        # `n` uniform [0, 1) draws as a (n,) array on this backend.
+        if self.is_torch:
+            return self.xp.rand(n, generator=generator, device=self.device, dtype=self.dtype)
+        return generator.random(n)
+
 
 NUMPY = Backend(name="numpy", xp=np)
 
