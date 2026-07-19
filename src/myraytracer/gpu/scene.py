@@ -25,6 +25,10 @@ class Scene:
     # has no per-object material system yet, so this is the single
     # differentiable surface parameter `render` shades against.
     albedo: torch.Tensor = field(default_factory=lambda: torch.tensor([1.0, 1.0, 1.0]))
+    # Uniform emission shared by every object in the scene, mirroring
+    # `albedo` above -- lets pathtracer.trace add a light-source term at
+    # every hit without a per-object material system.
+    emission: torch.Tensor = field(default_factory=lambda: torch.tensor([0.0, 0.0, 0.0]))
 
     def nearest_hit(
         self,

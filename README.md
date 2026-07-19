@@ -34,12 +34,15 @@ untouched; nothing in v0 imports from `gpu/` or vice versa.
   flow through shadow boundaries (a detached mask, not the harder
   reparameterized/edge-sampling visibility gradient from the differentiable-
   rendering literature). Documented as a known limitation, not a bug.
-- v1 direct lighting only (no recursive Monte Carlo path tracing yet) — a
-  full differentiable multi-bounce integrator is future work.
+- `render()` (camera/pixel path) is direct lighting only; `pathtracer.trace()`
+  adds full multi-bounce global illumination as a batched wavefront path
+  tracer (Laine, Karras, Aila, *"Megakernels Considered Harmful"*, HPG 2013)
+  — bounces are streamed as tensor passes over the whole live ray set, with a
+  per-ray `alive` mask and running throughput, rather than per-ray recursion.
 - Proven with an actual inverse-rendering test: gradient descent recovers a
   known albedo from a target rendered image.
-- Out of scope (for now): differentiable visibility/soft shadows, multi-bounce
-  GI, triangle meshes.
+- Out of scope (for now): differentiable visibility/soft shadows, triangle
+  meshes.
 
 ## Example: Cornell box
 

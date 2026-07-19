@@ -22,7 +22,12 @@ def _scene_to_device(scene: Scene, device: torch.device) -> Scene:
         PointLight(position=light.position.to(device), intensity=light.intensity.to(device))
         for light in scene.lights
     ]
-    return Scene(objects=objects, lights=lights, albedo=scene.albedo.to(device))
+    return Scene(
+        objects=objects,
+        lights=lights,
+        albedo=scene.albedo.to(device),
+        emission=scene.emission.to(device),
+    )
 
 
 def render(
