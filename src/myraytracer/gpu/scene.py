@@ -4,7 +4,15 @@ from dataclasses import dataclass, field
 
 import torch
 
-from myraytracer.gpu.geometry import HitBatch, Plane, Sphere, plane_hit, sphere_hit
+from myraytracer.gpu.geometry import (
+    HitBatch,
+    Mesh,
+    Plane,
+    Sphere,
+    mesh_hit,
+    plane_hit,
+    sphere_hit,
+)
 
 
 @dataclass(frozen=True)
@@ -19,7 +27,7 @@ class PointLight:
 
 @dataclass
 class Scene:
-    objects: list[Sphere | Plane]
+    objects: list[Sphere | Plane | Mesh]
     lights: list[PointLight]
     # Uniform Lambertian albedo shared by every object in the scene -- v1
     # has no per-object material system yet, so this is the single
@@ -43,7 +51,12 @@ class Scene:
         acc_normal = torch.zeros_like(ray_origin)
 
         for obj in self.objects:
-            hit_fn = sphere_hit if isinstance(obj, Sphere) else plane_hit
+            if isinstance(obj, Sphere):
+                hit_fn = sphere_hit
+            elif isinstance(obj, Plane):
+                hit_fn = plane_hit
+            else:
+                hit_fn = mesh_hit
             result = hit_fn(obj, ray_origin, ray_dir, t_min=t_min, t_max=t_max)
 
             # Masked min over t across primitives: a candidate only replaces
