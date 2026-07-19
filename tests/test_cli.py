@@ -5,6 +5,8 @@ import pathlib
 import subprocess
 import sys
 
+from myraytracer.cli import build_parser
+
 FIXTURE_SCENE = {
     "camera": {
         "origin": [0, 0, 0],
@@ -64,6 +66,38 @@ def test_render_command_writes_ppm_and_exits_zero(tmp_path: pathlib.Path) -> Non
     assert out_path.exists()
     assert out_path.read_bytes().startswith(b"P6\n4 4\n255\n")
     assert "4x4" in result.stdout
+
+
+def test_render_command_honors_backend_flag(tmp_path: pathlib.Path) -> None:
+    # In-process (so coverage sees cli.py): parse args including --backend and
+    # run the render command, exercising the parser and the render dispatch.
+    scene_path = tmp_path / "scene.json"
+    scene_path.write_text(json.dumps(FIXTURE_SCENE))
+    out_path = tmp_path / "render.ppm"
+
+    parser = build_parser()
+    args = parser.parse_args(
+        [
+            "render",
+            "--scene",
+            str(scene_path),
+            "--width",
+            "4",
+            "--height",
+            "4",
+            "--spp",
+            "1",
+            "--max-depth",
+            "1",
+            "--backend",
+            "cpu",
+            "--out",
+            str(out_path),
+        ]
+    )
+    assert args.backend == "cpu"
+    args.func(args)
+    assert out_path.exists()
 
 
 def test_render_command_writes_png_for_png_extension(tmp_path: pathlib.Path) -> None:

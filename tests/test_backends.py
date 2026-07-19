@@ -59,3 +59,10 @@ def test_render_returns_float64_numpy_for_gpu_backend() -> None:
     image = _render(backend)
     assert isinstance(image, np.ndarray)
     assert image.dtype == np.float64
+
+
+def test_scene_converter_rejects_unknown_object() -> None:
+    from myraytracer.render import _core_object
+
+    with pytest.raises(TypeError, match="unsupported object type"):
+        _core_object(object())
