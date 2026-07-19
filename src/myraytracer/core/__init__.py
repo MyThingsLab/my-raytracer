@@ -22,6 +22,7 @@ from myraytracer.core.integrator import render as render_image
 from myraytracer.core.linalg import cross, dot, length, normalize
 from myraytracer.core.material import Material
 from myraytracer.core.mesh import load_obj
+from myraytracer.core.optimize import fit_albedo
 from myraytracer.core.ray import RayBatch
 from myraytracer.core.sampling import sample_cosine_hemisphere
 from myraytracer.core.scene import PointLight, Scene, SceneHit
@@ -43,6 +44,7 @@ __all__ = [
     "backend_of",
     "cross",
     "dot",
+    "fit_albedo",
     "get_backend",
     "hit_primitive",
     "integrate",
