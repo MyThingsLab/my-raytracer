@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 import numpy as np
 
 from myraytracer.core.backend import Backend
@@ -9,6 +11,8 @@ from myraytracer.core.integrator import integrate
 from myraytracer.core.integrator import render as render_image
 from myraytracer.core.material import Material
 from myraytracer.core.scene import PointLight, Scene
+
+_INV_PI = 1.0 / math.pi
 
 
 def _rays(backend: Backend, origin, direction, n: int):
@@ -36,7 +40,8 @@ def test_direct_lambertian_matches_closed_form(backend: Backend) -> None:
     result = _integrate(scene, ro, rd, backend)
 
     distance = 3.0
-    expected = np.array(albedo) * (10.0 * 1.0 / distance**2)
+    # Lambertian BRDF albedo/pi: Lo = (albedo/pi) * I * cos / dist^2.
+    expected = np.array(albedo) * _INV_PI * (10.0 * 1.0 / distance**2)
     assert np.allclose(result[0], expected, atol=1e-5)
 
 
@@ -58,7 +63,7 @@ def test_emission_adds_to_direct_at_depth_zero(backend: Backend) -> None:
     ro, rd = _rays(backend, (0.0, 0.0, 0.0), (0.0, 0.0, -1.0), 1)
     result = _integrate(scene, ro, rd, backend)
 
-    expected = np.array(emission) + np.array(albedo) * (10.0 * 1.0 / 3.0**2)
+    expected = np.array(emission) + np.array(albedo) * _INV_PI * (10.0 * 1.0 / 3.0**2)
     assert np.allclose(result[0], expected, atol=1e-5)
 
 
@@ -109,7 +114,10 @@ def test_area_light_nee_matches_solid_angle(backend: Backend) -> None:
     light_normal = light_normal / np.linalg.norm(light_normal)
     cos_light = light_normal @ (-light_dir)
     area = np.linalg.norm(np.cross(edge1, edge2))
-    expected = np.array(albedo) * emission * cos_surface * cos_light * area / distance**2
+    # Physically-correct Lambertian NEE (albedo/pi). The MIS light weight is
+    # ~1 here (a tiny, distant light has a far larger light pdf than the BSDF
+    # pdf), so it does not shift the expectation within tolerance.
+    expected = np.array(albedo) * _INV_PI * emission * cos_surface * cos_light * area / distance**2
     assert np.allclose(result, expected, rtol=0.1, atol=1e-4)
 
 
