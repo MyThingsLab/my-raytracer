@@ -15,6 +15,8 @@ from myraytracer.core.scene import Scene, SceneHit
 _ROULETTE_DEPTH = 2
 _ROULETTE_SURVIVAL = 0.9
 _T_MIN = 1e-4
+_INV_PI = 1.0 / math.pi
+_EPS = 1e-9
 
 
 def _visibility(
@@ -27,11 +29,52 @@ def _visibility(
     return backend.where(occluded, backend.zeros_like(dist), backend.ones_like(dist))
 
 
-def _direct_lighting(scene: Scene, hit: SceneHit, generator: Any, backend: Backend) -> Array:
+def _light_sampling_pdf(
+    scene: Scene, hit_point: Array, direction: Array, prev_point: Array, backend: Backend
+) -> Array:
+    # Solid-angle pdf that area-light sampling *would* have assigned to reaching
+    # the surface at `hit_point` along `direction` from `prev_point`. Summed
+    # over the area lights the point lies on (normally one), it is the light
+    # side of the MIS balance heuristic for emission picked up by a BSDF-sampled
+    # bounce ray. Zero for points on no area light.
+    total = backend.zeros_like(hit_point[..., 0])
+    dist = length(hit_point - prev_point)
+    for quad in scene.area_lights():
+        corner = backend.asarray(quad.corner)
+        edge1 = backend.asarray(quad.edge1)
+        edge2 = backend.asarray(quad.edge2)
+        normal = normalize(cross(edge1, edge2))
+        area = length(cross(edge1, edge2))
+
+        rel = hit_point - corner
+        e1_len_sq = dot(edge1, edge1)
+        e2_len_sq = dot(edge2, edge2)
+        e1_dot_e2 = dot(edge1, edge2)
+        denom = e1_len_sq * e2_len_sq - e1_dot_e2 * e1_dot_e2
+        d1 = dot(rel, edge1)
+        d2 = dot(rel, edge2)
+        alpha = (d1 * e2_len_sq - d2 * e1_dot_e2) / denom
+        beta = (d2 * e1_len_sq - d1 * e1_dot_e2) / denom
+
+        coplanar = abs(dot(normal, rel)) < 1e-3
+        inside = (alpha >= 0.0) & (alpha <= 1.0) & (beta >= 0.0) & (beta <= 1.0)
+        cos_light = abs(dot(normal, direction))
+        on_light = coplanar & inside & (cos_light > _EPS)
+
+        pdf = dist * dist / (backend.clip(cos_light, lo=_EPS) * area)
+        total = total + backend.where(on_light, pdf, backend.zeros_like(pdf))
+    return total
+
+
+def _direct_lighting(
+    scene: Scene, hit: SceneHit, generator: Any, backend: Backend, mis: bool
+) -> Array:
     # Next-event estimation: explicit shadow-ray connections to point lights and
-    # (one sample each) to emissive area lights, exactly as the scalar tracer.
+    # (one sample each) to emissive area lights, with the Lambertian BRDF
+    # albedo/pi. Point lights are delta sources (BSDF sampling can never hit
+    # them), so they are pure NEE; area lights carry the light-side MIS weight.
     radiance = backend.zeros_like(hit.point)
-    albedo = hit.albedo
+    brdf = hit.albedo * _INV_PI
 
     for light in scene.lights:
         position = backend.asarray(light.position)
@@ -42,7 +85,7 @@ def _direct_lighting(scene: Scene, hit: SceneHit, generator: Any, backend: Backe
         cos_theta = backend.clip(dot(hit.normal, light_dir), lo=0.0)
         visibility = _visibility(scene, hit.point, light_dir, dist, backend)
         falloff = cos_theta / (dist * dist)
-        radiance = radiance + albedo * intensity * (falloff * visibility)[..., None]
+        radiance = radiance + brdf * intensity * (falloff * visibility)[..., None]
 
     for quad in scene.area_lights():
         corner = backend.asarray(quad.corner)
@@ -55,6 +98,7 @@ def _direct_lighting(scene: Scene, hit: SceneHit, generator: Any, backend: Backe
         v = backend.random(generator, n)
         light_point = corner + edge1 * u[..., None] + edge2 * v[..., None]
         light_normal = normalize(cross(edge1, edge2))
+        area = length(cross(edge1, edge2))
 
         to_light = light_point - hit.point
         dist = length(to_light)
@@ -63,9 +107,18 @@ def _direct_lighting(scene: Scene, hit: SceneHit, generator: Any, backend: Backe
         cos_light = backend.clip(dot(light_normal, -light_dir), lo=0.0)
         visibility = _visibility(scene, hit.point, light_dir, dist, backend)
 
-        area = length(cross(edge1, edge2))
-        falloff = cos_surface * cos_light * area / (dist * dist)
-        radiance = radiance + albedo * emission * (falloff * visibility)[..., None]
+        geometry = cos_surface * cos_light * area / (dist * dist)
+        contribution = brdf * emission * (geometry * visibility)[..., None]
+
+        if mis:
+            # Balance heuristic between this light sample and the BSDF sample
+            # that could have produced the same direction (both solid-angle).
+            pdf_light = dist * dist / (backend.clip(cos_light, lo=_EPS) * area)
+            pdf_bsdf = cos_surface * _INV_PI
+            weight = pdf_light / (pdf_light + pdf_bsdf + _EPS)
+            contribution = contribution * weight[..., None]
+
+        radiance = radiance + contribution
 
     return radiance
 
@@ -78,28 +131,46 @@ def integrate(
     max_depth: int,
     generator: Any,
     backend: Backend,
+    mis: bool = True,
 ) -> Array:
-    """Estimate the radiance along a batch of rays as an iterative wavefront.
+    """Estimate radiance along a batch of rays as an iterative wavefront.
 
-    One sample per ray: at each bounce, accumulate emission + direct lighting
-    weighted by the path throughput, then scatter along a cosine-weighted
-    bounce until the depth budget runs out (with Russian-roulette termination
-    for the deepest bounces). This is the batched, backend-agnostic unification
-    of the scalar recursive tracer and gpu.pathtracer.
+    One sample per ray: at each hit, accumulate emission (BSDF-sampling term)
+    and next-event direct lighting (light-sampling term), then scatter along a
+    cosine-weighted bounce until the depth budget runs out (with Russian-
+    roulette termination for the deepest bounces). When `mis` is set, the two
+    ways an area light can be reached -- a BSDF bounce landing on it, and an
+    explicit NEE connection -- are combined with the balance heuristic instead
+    of double-counted, cutting variance without bias. With `mis=False` the
+    estimator degrades to pure NEE (light-sampling only), which is the
+    unbiased reference the MIS result must match in expectation.
     """
     throughput = backend.ones_like(ray_origin)
     radiance = backend.zeros_like(ray_origin)
     origin = ray_origin
     direction = ray_dir
+    prev_point = ray_origin
+    prev_bsdf_pdf = backend.zeros_like(ray_origin[..., 0])
     remaining = max_depth
+    first = True
     up = backend.asarray((0.0, 0.0, 1.0))
 
     while True:
         hit = scene.nearest_hit(origin, direction, _T_MIN, math.inf, backend)
         hit_mask = hit.hit[..., None]
 
-        radiance = radiance + throughput * hit.emission * hit_mask
-        direct = _direct_lighting(scene, hit, generator, backend)
+        # Emission (BSDF-sampling term). The camera ray sees lights fully; a
+        # bounce ray's emission is MIS-weighted against the NEE it competes with.
+        if first:
+            emission_weight = backend.ones_like(prev_bsdf_pdf)
+        elif not mis:
+            emission_weight = backend.zeros_like(prev_bsdf_pdf)
+        else:
+            pdf_light = _light_sampling_pdf(scene, hit.point, direction, prev_point, backend)
+            emission_weight = prev_bsdf_pdf / (prev_bsdf_pdf + pdf_light + _EPS)
+        radiance = radiance + throughput * hit.emission * (emission_weight[..., None] * hit_mask)
+
+        direct = _direct_lighting(scene, hit, generator, backend, mis)
         radiance = radiance + throughput * direct * hit_mask
         # A ray that missed carries nothing further.
         throughput = backend.where(hit_mask, throughput, backend.zeros_like(throughput))
@@ -118,10 +189,15 @@ def integrate(
         # them a dummy unit normal -- their throughput is already zero.
         safe_normal = backend.where(hit_mask, hit.normal, up)
         bounce = sample_cosine_hemisphere(safe_normal, generator, backend)
+        # The cosine-sampling pdf of this bounce, carried forward so the next
+        # hit's emission can be MIS-weighted against it.
+        prev_bsdf_pdf = backend.clip(dot(safe_normal, bounce), lo=0.0) * _INV_PI
+        prev_point = hit.point
         throughput = throughput * hit.albedo
         origin = backend.where(hit_mask, hit.point, origin)
         direction = backend.where(hit_mask, bounce, direction)
         remaining -= 1
+        first = False
 
     return radiance
 
@@ -136,6 +212,7 @@ def render(
     max_depth: int,
     seed: int,
     backend: Backend,
+    mis: bool = True,
 ) -> Array:
     """Render a scene to an (H, W, 3) radiance image on the given backend.
 
@@ -161,6 +238,7 @@ def render(
             max_depth=max_depth,
             generator=generator,
             backend=backend,
+            mis=mis,
         )
         accumulator = sample if accumulator is None else accumulator + sample
 
