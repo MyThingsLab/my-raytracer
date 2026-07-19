@@ -72,10 +72,14 @@ def _parse_material(data: dict[str, Any] | None, context: str) -> Material:
     if data is None:
         raise ValueError(f"{context} is missing required field 'material'")
     albedo = _vec3(_require(data, "albedo", f"{context}.material"), f"{context}.material.albedo")
-    if "emission" in data:
-        emission = _vec3(data["emission"], f"{context}.material.emission")
-        return Material(albedo=albedo, emission=emission)
-    return Material(albedo=albedo)
+    emission = (
+        _vec3(data["emission"], f"{context}.material.emission")
+        if "emission" in data
+        else Vec3(0, 0, 0)
+    )
+    metallic = float(data.get("metallic", 0.0))
+    roughness = float(data.get("roughness", 1.0))
+    return Material(albedo=albedo, emission=emission, metallic=metallic, roughness=roughness)
 
 
 def _parse_object(data: dict[str, Any]) -> Sphere | Plane | Quad:

@@ -20,6 +20,8 @@ class SceneHit(Hit):
     # per-object materials (the GPU path previously had one global albedo).
     albedo: Array = None  # (N, 3)
     emission: Array = None  # (N, 3)
+    metallic: Array = None  # (N,)
+    roughness: Array = None  # (N,)
 
 
 @dataclass
@@ -49,6 +51,8 @@ class Scene:
         acc_normal = backend.zeros_like(ray_origin)
         acc_albedo = backend.zeros_like(ray_origin)
         acc_emission = backend.zeros_like(ray_origin)
+        acc_metallic = backend.zeros_like(column)
+        acc_roughness = backend.ones_like(column)
 
         for obj in self.objects:
             result = hit_primitive(obj, ray_origin, ray_dir, t_min, t_max, backend)
@@ -62,6 +66,8 @@ class Scene:
             acc_emission = backend.where(
                 mask, backend.asarray(obj.material.emission), acc_emission
             )
+            acc_metallic = backend.where(closer, float(obj.material.metallic), acc_metallic)
+            acc_roughness = backend.where(closer, float(obj.material.roughness), acc_roughness)
 
         hit = acc_t < t_max
         return SceneHit(
@@ -71,6 +77,8 @@ class Scene:
             normal=acc_normal,
             albedo=acc_albedo,
             emission=acc_emission,
+            metallic=acc_metallic,
+            roughness=acc_roughness,
         )
 
     def area_lights(self) -> list[Quad]:
