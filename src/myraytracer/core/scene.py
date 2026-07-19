@@ -4,7 +4,7 @@ import math
 from dataclasses import dataclass
 
 from myraytracer.core.backend import Array, Backend
-from myraytracer.core.geometry import Hit, Plane, Quad, Sphere, hit_primitive
+from myraytracer.core.geometry import Hit, Mesh, Plane, Quad, Sphere, hit_primitive
 
 
 @dataclass(frozen=True)
@@ -24,7 +24,7 @@ class SceneHit(Hit):
 
 @dataclass
 class Scene:
-    objects: list[Sphere | Plane | Quad]
+    objects: list[Sphere | Plane | Quad | Mesh]
     lights: list[PointLight]
 
     def nearest_hit(

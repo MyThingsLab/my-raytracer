@@ -10,15 +10,18 @@ from myraytracer.core.backend import (
 from myraytracer.core.camera import Camera
 from myraytracer.core.geometry import (
     Hit,
+    Mesh,
     Plane,
     Quad,
     Sphere,
     hit_primitive,
+    mesh_hit,
 )
 from myraytracer.core.integrator import integrate
 from myraytracer.core.integrator import render as render_image
 from myraytracer.core.linalg import cross, dot, length, normalize
 from myraytracer.core.material import Material
+from myraytracer.core.mesh import load_obj
 from myraytracer.core.ray import RayBatch
 from myraytracer.core.sampling import sample_cosine_hemisphere
 from myraytracer.core.scene import PointLight, Scene, SceneHit
@@ -29,6 +32,7 @@ __all__ = [
     "Camera",
     "Hit",
     "Material",
+    "Mesh",
     "Plane",
     "PointLight",
     "Quad",
@@ -43,6 +47,8 @@ __all__ = [
     "hit_primitive",
     "integrate",
     "length",
+    "load_obj",
+    "mesh_hit",
     "normalize",
     "render_image",
     "sample_cosine_hemisphere",

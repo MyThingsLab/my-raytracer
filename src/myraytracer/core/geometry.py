@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
+from typing import Any
 
 from myraytracer.core.backend import Array, Backend, backend_of
 from myraytracer.core.linalg import cross, dot, normalize
@@ -42,6 +44,19 @@ class Quad:
     corner: tuple[float, float, float]
     edge1: tuple[float, float, float]
     edge2: tuple[float, float, float]
+    material: Material
+
+
+@dataclass(frozen=True)
+class Mesh:
+    """A triangle mesh as a batch of triangle-vertex positions.
+
+    `vertices` is (M, 3, 3): triangle index, vertex-in-triangle (v0/v1/v2),
+    xyz -- a numpy array (backend-agnostic; converted per backend at hit time),
+    typically from `myraytracer.core.mesh.load_obj`.
+    """
+
+    vertices: Any
     material: Material
 
 
@@ -133,8 +148,65 @@ def quad_hit(
     return Hit(hit=hit, t=t, point=point, normal=face_normal)
 
 
+def mesh_hit(
+    mesh: Mesh, ray_origin: Array, ray_dir: Array, t_min: float, t_max: float, backend: Backend
+) -> Hit:
+    # Batched Moller-Trumbore: every ray (N) against every triangle (M) as an
+    # (N, M) intermediate, reduced over the triangle axis to each ray's nearest
+    # hit, so the result is shaped (N,) / (N, 3) like the other primitives. On
+    # torch this stays differentiable through the winning triangle.
+    vertices = backend.asarray(mesh.vertices)
+    v0 = vertices[:, 0]
+    edge1 = vertices[:, 1] - v0
+    edge2 = vertices[:, 2] - v0
+
+    ray_dir_b = ray_dir[:, None, :]
+    ray_origin_b = ray_origin[:, None, :]
+    edge1_b = edge1[None, :, :]
+    edge2_b = edge2[None, :, :]
+
+    h = cross(ray_dir_b, edge2_b)
+    a = dot(edge1_b, h)
+    not_parallel = abs(a) >= _PARALLEL_EPS
+    a_safe = backend.where(not_parallel, a, backend.ones_like(a))
+    f = 1.0 / a_safe
+
+    s = ray_origin_b - v0[None, :, :]
+    u = f * dot(s, h)
+    q = cross(s, edge1_b)
+    v = f * dot(ray_dir_b, q)
+    t = f * dot(edge2_b, q)
+
+    # `t_max` may be a per-ray (N,) array (shadow rays); add the triangle axis.
+    t_max_b = t_max[:, None] if hasattr(t_max, "ndim") else t_max
+    in_range = (t > t_min) & (t < t_max_b)
+    barycentric_ok = (u >= 0.0) & (v >= 0.0) & (u + v <= 1.0)
+    valid = not_parallel & barycentric_ok & in_range
+
+    # Mask invalid (ray, triangle) pairs to +inf before the row-wise min, so
+    # only the triangle owning each ray's nearest hit contributes.
+    t_candidates = backend.where(valid, t, backend.full_like(t, math.inf))
+    best_t, best_index = backend.min_along(t_candidates, axis=1)
+    hit = backend.xp.isfinite(best_t)
+
+    # Missed rays carry t=+inf; use a finite placeholder for the point so the
+    # multiply below never produces inf/nan (the point is masked out by `hit`).
+    safe_t = backend.where(hit, best_t, backend.zeros_like(best_t))
+    point = ray_origin + ray_dir * safe_t[..., None]
+
+    face_normal = normalize(cross(edge1, edge2))  # (M, 3), per triangle winding
+    n_rays = ray_dir.shape[0]
+    n_tris = edge1.shape[0]
+    outward = backend.broadcast_to(face_normal[None, :, :], (n_rays, n_tris, 3))
+    gather_index = backend.broadcast_to(best_index[:, None, None], (n_rays, 1, 3))
+    selected = backend.take_along(outward, gather_index, axis=1)[:, 0, :]
+    normal = _face_forward(selected, ray_dir)
+
+    return Hit(hit=hit, t=best_t, point=point, normal=normal)
+
+
 def hit_primitive(
-    obj: Sphere | Plane | Quad,
+    obj: Sphere | Plane | Quad | Mesh,
     ray_origin: Array,
     ray_dir: Array,
     t_min: float,
@@ -145,4 +217,6 @@ def hit_primitive(
         return sphere_hit(obj, ray_origin, ray_dir, t_min, t_max, backend)
     if isinstance(obj, Plane):
         return plane_hit(obj, ray_origin, ray_dir, t_min, t_max, backend)
-    return quad_hit(obj, ray_origin, ray_dir, t_min, t_max, backend)
+    if isinstance(obj, Quad):
+        return quad_hit(obj, ray_origin, ray_dir, t_min, t_max, backend)
+    return mesh_hit(obj, ray_origin, ray_dir, t_min, t_max, backend)
