@@ -28,7 +28,12 @@ def _tuple(vec: Vec3) -> tuple[float, float, float]:
 
 
 def _core_material(material) -> CoreMaterial:
-    return CoreMaterial(albedo=_tuple(material.albedo), emission=_tuple(material.emission))
+    return CoreMaterial(
+        albedo=_tuple(material.albedo),
+        emission=_tuple(material.emission),
+        metallic=material.metallic,
+        roughness=material.roughness,
+    )
 
 
 def _core_object(obj):
