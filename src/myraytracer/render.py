@@ -5,8 +5,71 @@ import math
 import numpy as np
 
 from myraytracer.camera import Camera
+from myraytracer.core import NUMPY, render_image
+from myraytracer.core import Camera as CoreCamera
+from myraytracer.core import Material as CoreMaterial
+from myraytracer.core import Plane as CorePlane
+from myraytracer.core import PointLight as CorePointLight
+from myraytracer.core import Quad as CoreQuad
+from myraytracer.core import Scene as CoreScene
+from myraytracer.core import Sphere as CoreSphere
+from myraytracer.geometry import Plane, Quad, Sphere
 from myraytracer.scene import Scene
-from myraytracer.tracer import render_pixel
+from myraytracer.vec import Vec3
+
+# Bridge from the scalar scene description (Vec3-based, produced by
+# `load_scene`) to the backend-agnostic `core` scene the batched integrator
+# consumes. Kept here as a thin transitional adapter -- a later phase makes
+# scene loading emit `core` types directly and drops these.
+
+
+def _tuple(vec: Vec3) -> tuple[float, float, float]:
+    return (vec.x, vec.y, vec.z)
+
+
+def _core_material(material) -> CoreMaterial:
+    return CoreMaterial(albedo=_tuple(material.albedo), emission=_tuple(material.emission))
+
+
+def _core_object(obj):
+    if isinstance(obj, Sphere):
+        return CoreSphere(
+            center=_tuple(obj.center), radius=obj.radius, material=_core_material(obj.material)
+        )
+    if isinstance(obj, Plane):
+        return CorePlane(
+            point=_tuple(obj.point),
+            normal=_tuple(obj.normal),
+            material=_core_material(obj.material),
+        )
+    if isinstance(obj, Quad):
+        return CoreQuad(
+            corner=_tuple(obj.corner),
+            edge1=_tuple(obj.edge1),
+            edge2=_tuple(obj.edge2),
+            material=_core_material(obj.material),
+        )
+    raise TypeError(f"unsupported object type: {type(obj).__name__}")
+
+
+def _core_scene(scene: Scene) -> CoreScene:
+    return CoreScene(
+        objects=[_core_object(obj) for obj in scene.objects],
+        lights=[
+            CorePointLight(position=_tuple(light.position), intensity=_tuple(light.intensity))
+            for light in scene.lights
+        ],
+    )
+
+
+def _core_camera(camera: Camera) -> CoreCamera:
+    return CoreCamera(
+        origin=_tuple(camera.origin),
+        look_at=_tuple(camera.look_at),
+        up=_tuple(camera.up),
+        vfov_degrees=camera.vfov_degrees,
+        aspect_ratio=camera.aspect_ratio,
+    )
 
 
 def render(
@@ -19,22 +82,17 @@ def render(
     max_depth: int,
     seed: int,
 ) -> np.ndarray:
-    # A single Generator seeded once and shared across all pixels, rather
-    # than reseeding per-pixel, keeps the whole image reproducible for a
-    # fixed seed while still giving every pixel an independent draw
-    # sequence -- per-pixel reseeding would correlate samples across
-    # pixels that happen to share a seed-derived state.
-    rng = np.random.Generator(np.random.PCG64(seed))
-    pixels = np.zeros((height, width, 3), dtype=np.float64)
-
-    for py in range(height):
-        for px in range(width):
-            color = render_pixel(
-                camera, scene, px, py, width, height, rng, spp=spp, max_depth=max_depth
-            )
-            pixels[py, px] = (color.x, color.y, color.z)
-
-    return pixels
+    image = render_image(
+        _core_scene(scene),
+        _core_camera(camera),
+        width=width,
+        height=height,
+        spp=spp,
+        max_depth=max_depth,
+        seed=seed,
+        backend=NUMPY,
+    )
+    return np.asarray(image, dtype=np.float64)
 
 
 def render_gbuffers(

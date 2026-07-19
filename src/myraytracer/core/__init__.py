@@ -15,9 +15,12 @@ from myraytracer.core.geometry import (
     Sphere,
     hit_primitive,
 )
+from myraytracer.core.integrator import integrate
+from myraytracer.core.integrator import render as render_image
 from myraytracer.core.linalg import cross, dot, length, normalize
 from myraytracer.core.material import Material
 from myraytracer.core.ray import RayBatch
+from myraytracer.core.sampling import sample_cosine_hemisphere
 from myraytracer.core.scene import PointLight, Scene, SceneHit
 
 __all__ = [
@@ -38,7 +41,10 @@ __all__ = [
     "dot",
     "get_backend",
     "hit_primitive",
+    "integrate",
     "length",
     "normalize",
+    "render_image",
+    "sample_cosine_hemisphere",
     "torch_backend",
 ]
