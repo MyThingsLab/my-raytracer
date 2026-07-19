@@ -14,3 +14,5 @@ class Material:
     # deprecated scalar tracer ignores them.
     metallic: float = 0.0
     roughness: float = 1.0
+    transmission: float = 0.0
+    ior: float = 1.5

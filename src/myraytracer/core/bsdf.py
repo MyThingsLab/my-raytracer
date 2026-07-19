@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 
 from myraytracer.core.backend import Array, Backend
-from myraytracer.core.linalg import dot, normalize
+from myraytracer.core.linalg import dot, length
 from myraytracer.core.sampling import cosine_hemisphere_from_uv, orthonormal_basis
 
 # A per-ray BSDF that is either Lambertian diffuse (metallic <= 0.5) or a GGX
@@ -15,6 +15,16 @@ from myraytracer.core.sampling import cosine_hemisphere_from_uv, orthonormal_bas
 _INV_PI = 1.0 / math.pi
 _EPS = 1e-6
 _MIN_ALPHA = 1e-4
+# A smooth dielectric is a delta BSDF; a large sampling pdf makes MIS give its
+# reflected/refracted radiance full weight (NEE cannot sample a delta lobe).
+_DELTA_PDF = 1e9
+
+
+def _safe_normalize(v: Array, backend: Backend) -> Array:
+    # Non-raising normalize: every lobe is evaluated for the whole batch and
+    # only the selected one is kept, so a degenerate vector in an unused lobe
+    # (e.g. a grazing/back-facing case) must not raise -- clamp the length.
+    return v / backend.clip(length(v), lo=_EPS)[..., None]
 
 
 def _alpha(roughness: Array) -> Array:
@@ -66,9 +76,9 @@ def _metal_sample(
         + bitangent * (sin_h * backend.xp.sin(phi))[..., None]
         + normal * cos_h[..., None]
     )
-    h = normalize(h)
+    h = _safe_normalize(h, backend)
 
-    wi = normalize(2.0 * dot(view, h)[..., None] * h - view)
+    wi = _safe_normalize(2.0 * dot(view, h)[..., None] * h - view, backend)
     n_wo = dot(normal, view)
     n_wi = dot(normal, wi)
     n_h = dot(normal, h)
@@ -87,12 +97,44 @@ def _metal_sample(
     return wi, weight, pdf
 
 
+def _dielectric_sample(
+    view: Array, geo_normal: Array, albedo: Array, ior: Array, u1: Array, backend: Backend
+):
+    # Smooth glass: reflect or refract per Fresnel, always reflecting past the
+    # critical angle (TIR). `geo_normal` is the outward geometric normal; its
+    # sign against the incident ray decides entering vs exiting the dielectric.
+    incident = -view
+    entering = dot(incident, geo_normal) < 0.0
+    eta = backend.where(entering, 1.0 / ior, ior)
+    n_face = backend.where(entering[..., None], geo_normal, -geo_normal)
+
+    cos_i = backend.clip(-dot(incident, n_face), lo=0.0, hi=1.0)
+    sin2_t = backend.clip(eta * eta * (1.0 - cos_i * cos_i), lo=0.0)
+    tir = sin2_t > 1.0
+    cos_t = backend.clip(1.0 - sin2_t, lo=0.0) ** 0.5
+
+    refracted = eta[..., None] * incident + (eta * cos_i - cos_t)[..., None] * n_face
+    reflected = incident - 2.0 * dot(incident, n_face)[..., None] * n_face
+
+    r0 = ((eta - 1.0) / (eta + 1.0)) ** 2
+    grazing = backend.clip(1.0 - cos_i, lo=0.0, hi=1.0)
+    reflectance = r0 + (1.0 - r0) * grazing**5
+    reflect = (tir | (u1 < reflectance))[..., None]
+
+    wi = _safe_normalize(backend.where(reflect, reflected, refracted), backend)
+    pdf = backend.full_like(cos_i, _DELTA_PDF)
+    return wi, albedo, pdf
+
+
 def sample(
     view: Array,
     normal: Array,
+    geo_normal: Array,
     albedo: Array,
     metallic: Array,
     roughness: Array,
+    transmission: Array,
+    ior: Array,
     u1: Array,
     u2: Array,
     backend: Backend,
@@ -104,10 +146,18 @@ def sample(
     metal_wi, metal_weight, metal_pdf = _metal_sample(
         view, normal, albedo, _alpha(roughness), u1, u2, backend
     )
+    diel_wi, diel_weight, diel_pdf = _dielectric_sample(
+        view, geo_normal, albedo, ior, u1, backend
+    )
+
     is_metal = (metallic > 0.5)[..., None]
+    is_diel = (transmission > 0.5)[..., None]
     wi = backend.where(is_metal, metal_wi, diff_wi)
+    wi = backend.where(is_diel, diel_wi, wi)
     weight = backend.where(is_metal, metal_weight, diff_weight)
+    weight = backend.where(is_diel, diel_weight, weight)
     pdf = backend.where(metallic > 0.5, metal_pdf, diff_pdf)
+    pdf = backend.where(transmission > 0.5, diel_pdf, pdf)
     return wi, weight, pdf
 
 
@@ -118,19 +168,21 @@ def evaluate(
     albedo: Array,
     metallic: Array,
     roughness: Array,
+    transmission: Array,
     backend: Backend,
 ):
     """Evaluate the BSDF for a fixed incident direction `wi`. Returns
     (f_cos, pdf): the BSDF value times cos(n, wi) (per channel) and the
     solid-angle sampling pdf of `wi` -- both needed for next-event estimation
-    and its MIS weight."""
+    and its MIS weight. A dielectric is a delta lobe, so it evaluates to zero
+    for any explicitly-chosen direction (NEE cannot connect to it)."""
     n_wi = backend.clip(dot(normal, wi), lo=0.0)
 
     diff_f_cos = albedo * _INV_PI * n_wi[..., None]
     diff_pdf = n_wi * _INV_PI
 
     alpha = _alpha(roughness)
-    half = normalize(view + wi)
+    half = _safe_normalize(view + wi, backend)
     n_wo = dot(normal, view)
     n_h = dot(normal, half)
     wo_h = dot(view, half)
@@ -147,6 +199,9 @@ def evaluate(
     metal_pdf = backend.where(valid, metal_pdf, backend.zeros_like(metal_pdf))
 
     is_metal = (metallic > 0.5)[..., None]
+    is_diel = (transmission > 0.5)[..., None]
     f_cos = backend.where(is_metal, metal_f_cos, diff_f_cos)
+    f_cos = backend.where(is_diel, backend.zeros_like(f_cos), f_cos)
     pdf = backend.where(metallic > 0.5, metal_pdf, diff_pdf)
+    pdf = backend.where(transmission > 0.5, backend.zeros_like(pdf), pdf)
     return f_cos, pdf

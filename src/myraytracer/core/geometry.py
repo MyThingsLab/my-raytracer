@@ -22,7 +22,8 @@ class Hit:
     hit: Array  # (N,) bool
     t: Array  # (N,)
     point: Array  # (N, 3)
-    normal: Array  # (N, 3)
+    normal: Array  # (N, 3), face-forwarded to oppose the ray (shading normal)
+    geo_normal: Array = None  # (N, 3), outward geometric normal (for refraction)
 
 
 @dataclass(frozen=True)
@@ -93,7 +94,7 @@ def sphere_hit(
     point = ray_origin + ray_dir * t[..., None]
     outward_normal = (point - center) / radius
     normal = _face_forward(outward_normal, ray_dir)
-    return Hit(hit=hit, t=t, point=point, normal=normal)
+    return Hit(hit=hit, t=t, point=point, normal=normal, geo_normal=outward_normal)
 
 
 def plane_hit(
@@ -112,7 +113,8 @@ def plane_hit(
 
     point = ray_origin + ray_dir * t[..., None]
     normal = _face_forward(normal0, ray_dir)
-    return Hit(hit=hit, t=t, point=point, normal=normal)
+    geo_normal = backend.broadcast_to(normal0, point.shape)
+    return Hit(hit=hit, t=t, point=point, normal=normal, geo_normal=geo_normal)
 
 
 def quad_hit(
@@ -145,7 +147,8 @@ def quad_hit(
     hit = in_range & inside & (abs(denom) >= _PARALLEL_EPS)
 
     face_normal = _face_forward(normal, ray_dir)
-    return Hit(hit=hit, t=t, point=point, normal=face_normal)
+    geo_normal = backend.broadcast_to(normal, point.shape)
+    return Hit(hit=hit, t=t, point=point, normal=face_normal, geo_normal=geo_normal)
 
 
 def mesh_hit(
@@ -202,7 +205,7 @@ def mesh_hit(
     selected = backend.take_along(outward, gather_index, axis=1)[:, 0, :]
     normal = _face_forward(selected, ray_dir)
 
-    return Hit(hit=hit, t=best_t, point=point, normal=normal)
+    return Hit(hit=hit, t=best_t, point=point, normal=normal, geo_normal=selected)
 
 
 def hit_primitive(

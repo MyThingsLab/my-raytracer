@@ -24,6 +24,11 @@ class Material:
     emission: tuple[float, float, float] = field(default=(0.0, 0.0, 0.0))
     metallic: float = 0.0
     roughness: float = 1.0
+    # transmission > 0 makes the surface a smooth dielectric (glass): the ray
+    # reflects or refracts by Fresnel, with `ior` the index of refraction. Takes
+    # precedence over metallic. albedo tints the transmitted/reflected light.
+    transmission: float = 0.0
+    ior: float = 1.5
 
     @property
     def is_emissive(self) -> bool:

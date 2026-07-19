@@ -22,6 +22,8 @@ class SceneHit(Hit):
     emission: Array = None  # (N, 3)
     metallic: Array = None  # (N,)
     roughness: Array = None  # (N,)
+    transmission: Array = None  # (N,)
+    ior: Array = None  # (N,)
 
 
 @dataclass
@@ -49,10 +51,13 @@ class Scene:
         acc_t = backend.zeros_like(column) + t_max
         acc_point = backend.zeros_like(ray_origin)
         acc_normal = backend.zeros_like(ray_origin)
+        acc_geo_normal = backend.zeros_like(ray_origin)
         acc_albedo = backend.zeros_like(ray_origin)
         acc_emission = backend.zeros_like(ray_origin)
         acc_metallic = backend.zeros_like(column)
         acc_roughness = backend.ones_like(column)
+        acc_transmission = backend.zeros_like(column)
+        acc_ior = backend.ones_like(column)
 
         for obj in self.objects:
             result = hit_primitive(obj, ray_origin, ray_dir, t_min, t_max, backend)
@@ -62,12 +67,16 @@ class Scene:
             acc_t = backend.where(closer, result.t, acc_t)
             acc_point = backend.where(mask, result.point, acc_point)
             acc_normal = backend.where(mask, result.normal, acc_normal)
+            acc_geo_normal = backend.where(mask, result.geo_normal, acc_geo_normal)
             acc_albedo = backend.where(mask, backend.asarray(obj.material.albedo), acc_albedo)
             acc_emission = backend.where(
                 mask, backend.asarray(obj.material.emission), acc_emission
             )
-            acc_metallic = backend.where(closer, float(obj.material.metallic), acc_metallic)
-            acc_roughness = backend.where(closer, float(obj.material.roughness), acc_roughness)
+            material = obj.material
+            acc_metallic = backend.where(closer, float(material.metallic), acc_metallic)
+            acc_roughness = backend.where(closer, float(material.roughness), acc_roughness)
+            acc_transmission = backend.where(closer, float(material.transmission), acc_transmission)
+            acc_ior = backend.where(closer, float(material.ior), acc_ior)
 
         hit = acc_t < t_max
         return SceneHit(
@@ -75,10 +84,13 @@ class Scene:
             t=acc_t,
             point=acc_point,
             normal=acc_normal,
+            geo_normal=acc_geo_normal,
             albedo=acc_albedo,
             emission=acc_emission,
             metallic=acc_metallic,
             roughness=acc_roughness,
+            transmission=acc_transmission,
+            ior=acc_ior,
         )
 
     def area_lights(self) -> list[Quad]:
